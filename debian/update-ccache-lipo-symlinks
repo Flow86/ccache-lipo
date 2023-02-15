@@ -1,0 +1,60 @@
+#!/usr/bin/perl -l
+
+use strict;
+use warnings FATAL => "all";
+
+my $ccache_lipo_dir = "/usr/lib/ccache-lipo/";
+my $gcc_dir = "/usr/lib/gcc";
+my %old_symlinks; # Current compiler names in /usr/lib/ccache-lipo
+my %new_symlinks; # Compiler names that should be in /usr/lib/ccache-lipo
+
+sub consider {
+    my ($name) = @_;
+    if (-x "/usr/bin/$name") {
+        $new_symlinks{$name} = 1;
+    }
+}
+
+sub consider_gcc {
+    my ($prefix, $suffix) = @_;
+#    print $prefix;
+#    print $suffix;
+    consider "${prefix}gcc${suffix}";
+    consider "${prefix}g++${suffix}";
+}
+
+# Find existing GCC variants.
+foreach my $dir (<$gcc_dir/*apple*>) {
+#    print $dir;
+    (my $kind = $dir) =~ s|.*/||;
+#    print $dir;
+    consider_gcc "$kind-", "";
+    foreach (<$dir/*>) {
+        if (! -l $_ and -d $_) {
+            s|.*/||;
+            consider_gcc "$kind-", "-$_";
+        }
+    }
+}
+
+# Find existing symlinks.
+foreach (<$ccache_lipo_dir/*>) {
+    if (-l) {
+        s|.*/||;
+        $old_symlinks{$_} = 1;
+    }
+}
+
+# Remove obsolete symlinks.
+foreach (keys %old_symlinks) {
+    if (! exists $new_symlinks{$_}) {
+        unlink "$ccache_lipo_dir/$_";
+    }
+}
+
+# Add missing symlinks.
+foreach (keys %new_symlinks) {
+    if (! exists $old_symlinks{$_}) {
+        symlink "../../bin/ccache-lipo", "$ccache_lipo_dir/$_";
+    }
+}
